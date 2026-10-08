@@ -26,3 +26,24 @@ set to UTC, `hour()` returns the New York wall-clock hour: the three busiest pic
 18:00, 17:00 and 16:00 (212,788 / 206,257 / 190,201 trips), the evening rush, as expected.
 Note that `collect()` turns timestamps into Python datetimes in the *driver's* local zone, so
 printed values can look shifted; computations inside Spark are not affected.
+
+## 2026-10-09: data quality of the 1x month (`python -m src.profile`)
+
+Null rates: every column the job uses is complete except `passengers` (4.73% null; it is
+driver-entered and the job does not use it in aggregates).
+
+Rows failing each cleaning rule on its own (2,964,624 rows):
+
+| Rule | Rows | Share |
+|------|------|-------|
+| missing timestamp or zone | 0 | 0.00% |
+| duration <= 0 | 870 | 0.03% |
+| duration > 6 h | 1,772 | 0.06% |
+| distance <= 0 | 60,371 | 2.04% |
+| distance > 100 mi | 59 | 0.00% |
+| fare < 0 | 37,448 | 1.26% |
+| total <= 0 | 35,920 | 1.21% |
+
+**Kept after all rules: 2,868,067 (96.74%).** Negative fares and totals overlap heavily
+(likely voided or refunded trips), so the rules together drop fewer rows than their sum
+(136,440 rule failures vs 96,557 rows dropped). The cleaning step is a cheap narrow filter; it does not shuffle, so it should not drive the knee.
