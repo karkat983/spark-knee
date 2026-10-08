@@ -12,8 +12,9 @@ ROOT = "spark_knee"
 
 def get_logger(name: str) -> logging.Logger:
     root = logging.getLogger(ROOT)
-    if not root.handlers:
+    if not any(h.get_name() == ROOT for h in root.handlers):     # add our handler exactly once
         handler = logging.StreamHandler()
+        handler.set_name(ROOT)
         handler.setFormatter(logging.Formatter(FORMAT, datefmt="%H:%M:%S"))
         root.addHandler(handler)
         root.setLevel(os.environ.get("SPARK_KNEE_LOG", "INFO").upper())

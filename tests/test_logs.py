@@ -8,7 +8,8 @@ def test_logger_is_namespaced_and_has_one_handler():
     b = get_logger("sweep")
     assert a.name == "spark_knee.job"
     assert b.name == "spark_knee.sweep"
-    assert len(logging.getLogger("spark_knee").handlers) == 1
+    ours = [h for h in logging.getLogger("spark_knee").handlers if h.get_name() == "spark_knee"]
+    assert len(ours) == 1          # other tools (e.g. pytest) may attach their own handlers too
 
 
 def test_info_is_enabled_by_default_and_not_propagated():
