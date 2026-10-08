@@ -35,3 +35,14 @@ def cfg(tmp_path):
 def test_replication_preserves_schema(spark, cfg):
     df = build_size(spark, cfg, 3)
     assert dict(df.dtypes) == RAW_TYPES
+
+
+@pytest.mark.parametrize("units, expected", [(1, 3), (2, 8), (3, 11), (4, 16)])
+def test_row_counts_add_up_per_unit(spark, cfg, units, expected):
+    # units cycle through the real months: Jan(3), Feb(5), Jan copy(3), Feb copy(5)
+    assert build_size(spark, cfg, units).count() == expected
+
+
+def test_copies_do_not_duplicate_rows(spark, cfg):
+    df = build_size(spark, cfg, 4)
+    assert df.distinct().count() == df.count()
