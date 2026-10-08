@@ -5,6 +5,8 @@ one, which is where the runtime curve is expected to bend as data grows.
 
     python -m src.job                     # months from config.yaml
     python -m src.job --partitions 128
+
+Output is written as Parquet to data/out/hourly_zone_stats (overwritten each run).
 """
 import argparse
 import time
@@ -12,7 +14,7 @@ import time
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
-from src.config import load_config, trip_paths, zones_path
+from src.config import load_config, resolve, trip_paths, zones_path
 from src.data import load_trips, load_zones
 from src.spark_session import build_session
 
@@ -74,12 +76,15 @@ def main() -> None:
     trips = load_trips(spark, trip_paths(cfg, args.months))
     zones = load_zones(spark, zones_path(cfg))
 
+    out = resolve(cfg["data"]["out_dir"]) / "hourly_zone_stats"
     start = time.perf_counter()
-    rows = build_job(trips, zones, cfg["job"]).collect()   # output is small (zones x 24 hours)
+    # Writing (not collect) forces every stage to run, as a production job would.
+    build_job(trips, zones, cfg["job"]).write.mode("overwrite").parquet(str(out))
     elapsed = time.perf_counter() - start
 
+    rows = spark.read.parquet(str(out)).count()
     print(f"months={','.join(args.months)} partitions={args.partitions} "
-          f"rows={len(rows)} runtime_s={elapsed:.2f}")
+          f"rows={rows} runtime_s={elapsed:.2f} out={out}")
     spark.stop()
 
 
