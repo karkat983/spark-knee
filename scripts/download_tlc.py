@@ -8,11 +8,11 @@ Files are large (~50 MB per month) and gitignored.
 import argparse
 import hashlib
 import pathlib
+import sys
 import urllib.request
 
-import yaml
-
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+from src.config import load_config, trip_paths, zones_path  # noqa: E402
 
 
 def download(url: str, dest: pathlib.Path) -> str:
@@ -28,16 +28,14 @@ def download(url: str, dest: pathlib.Path) -> str:
 
 
 def main() -> None:
-    cfg = yaml.safe_load((ROOT / "config.yaml").read_text())["data"]
+    cfg = load_config()
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--months", nargs="+", default=cfg["months"])
+    parser.add_argument("--months", nargs="+", default=cfg["data"]["months"])
     args = parser.parse_args()
 
-    raw = ROOT / cfg["raw_dir"]
-    targets = [(cfg["zones_url"], raw / "taxi_zone_lookup.csv")]
-    for month in args.months:
-        name = f"yellow_tripdata_{month}.parquet"
-        targets.append((f"{cfg['base_url']}/{name}", raw / name))
+    targets = [(cfg["data"]["zones_url"], zones_path(cfg))]
+    for path in trip_paths(cfg, args.months):
+        targets.append((f"{cfg['data']['base_url']}/{path.name}", path))
 
     for url, dest in targets:
         digest = download(url, dest)
