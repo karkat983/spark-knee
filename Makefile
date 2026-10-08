@@ -1,7 +1,7 @@
 # Common tasks. Run `make help` for a list. Needs JAVA_HOME pointing at JDK 17+ (docs/setup.md).
 PYTHON ?= .venv/bin/python
 
-.PHONY: help setup data job profile test clean
+.PHONY: help setup data job profile lint test clean
 
 help:      ## list targets
 	@grep -E '^[a-z]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-8s %s\n", $$1, $$2}'
@@ -17,6 +17,9 @@ job:       ## run the job once at 1x and print its runtime
 
 profile:   ## null rates and cleaning-rule counts
 	$(PYTHON) -m src.profile
+
+lint:      ## ruff lint
+	$(PYTHON) -m ruff check .
 
 test:      ## unit tests (local Spark, tiny in-memory data)
 	$(PYTHON) -m pytest -q

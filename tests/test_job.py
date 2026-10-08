@@ -1,8 +1,13 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from pyspark.sql.types import (
-    DoubleType, IntegerType, StringType, StructField, StructType, TimestampType,
+    DoubleType,
+    IntegerType,
+    StringType,
+    StructField,
+    StructType,
+    TimestampType,
 )
 
 from src.job import build_job, clean_trips, hourly_zone_stats, with_zone_names
@@ -25,7 +30,7 @@ ZONE_SCHEMA = StructType([
 ])
 JOB_CFG = {"max_trip_hours": 6, "max_distance_miles": 100}
 # Timezone-aware so the test does not depend on the machine's local time zone.
-T0 = datetime(2024, 1, 15, 8, 0, tzinfo=timezone.utc)
+T0 = datetime(2024, 1, 15, 8, 0, tzinfo=UTC)
 
 
 def trip(minutes=10, zone=1, distance=2.0, fare=10.0, total=12.0, start=T0):
