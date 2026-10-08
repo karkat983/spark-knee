@@ -104,3 +104,27 @@ def test_build_job_end_to_end(spark):
     rows = [trip(zone=1), trip(zone=2), trip(zone=2, distance=0.0)]
     out = build_job(trips_df(spark, rows), zones_df(spark), JOB_CFG).collect()
     assert sorted((r["borough"], r["trips"]) for r in out) == [("Manhattan", 1), ("Queens", 1)]
+
+
+@pytest.mark.parametrize("minutes, kept", [(0, False), (1, True), (6 * 60, True), (6 * 60 + 1, False)])
+def test_duration_bounds_are_exclusive_of_zero_and_inclusive_of_max(spark, minutes, kept):
+    out = clean_trips(trips_df(spark, [trip(minutes=minutes)]), **JOB_CFG).count()
+    assert out == (1 if kept else 0)
+
+
+@pytest.mark.parametrize("distance, kept", [(0.01, True), (100.0, True), (100.01, False), (-1.0, False)])
+def test_distance_bounds(spark, distance, kept):
+    out = clean_trips(trips_df(spark, [trip(distance=distance)]), **JOB_CFG).count()
+    assert out == (1 if kept else 0)
+
+
+def test_zero_fare_is_kept_but_zero_total_is_not(spark):
+    # A $0 metered fare with surcharges is a real (if odd) trip; a $0 total means nothing was charged.
+    rows = [trip(fare=0.0, total=3.5), trip(fare=0.0, total=0.0)]
+    assert clean_trips(trips_df(spark, rows), **JOB_CFG).count() == 1
+
+
+def test_null_dropoff_is_dropped(spark):
+    row = list(trip())
+    row[1] = None
+    assert clean_trips(trips_df(spark, [tuple(row)]), **JOB_CFG).count() == 0
