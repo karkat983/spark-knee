@@ -17,6 +17,24 @@ ZONE_SCHEMA = StructType([
 ])
 
 
+# The 8 source columns the job reads, with the type each is normalised to.
+RAW_TYPES = {
+    "tpep_pickup_datetime": "timestamp",
+    "tpep_dropoff_datetime": "timestamp",
+    "PULocationID": "int",
+    "DOLocationID": "int",
+    "passenger_count": "double",
+    "trip_distance": "double",
+    "fare_amount": "double",
+    "total_amount": "double",
+}
+
+
+def normalise_raw(df: DataFrame) -> DataFrame:
+    """Keep only the job's source columns, under their original names, with uniform types."""
+    return df.select([F.col(c).cast(t).alias(c) for c, t in RAW_TYPES.items()])
+
+
 def select_trip_columns(df: DataFrame) -> DataFrame:
     """Keep and cast the columns the job uses, with short snake_case names."""
     return df.select(
