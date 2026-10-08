@@ -16,7 +16,15 @@ Distributed jobs are usually sized by assuming runtime grows linearly with data,
 | —    | —          | —           | —            |
 
 ## Run it
-*Planned.*
+Requires Java 17+ (for Spark).
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python scripts/download_tlc.py     # 1 month of yellow-taxi trips + zone lookup into data/raw/
+python -m src.job                  # runs the job once and prints runtime
+pytest
+```
+Day 1 check: `pytest` passes (4 tests) with PySpark 4.2 on Python 3.12 and OpenJDK 17. The size sweep and knee fit are *planned*.
 
 ## What I learned
 *Planned.*
