@@ -1,9 +1,6 @@
-import os
-import sys
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from pyspark.sql import SparkSession
 from pyspark.sql.types import (
     DoubleType, IntegerType, StringType, StructField, StructType, TimestampType,
 )
@@ -29,20 +26,6 @@ ZONE_SCHEMA = StructType([
 JOB_CFG = {"max_trip_hours": 6, "max_distance_miles": 100}
 # Timezone-aware so the test does not depend on the machine's local time zone.
 T0 = datetime(2024, 1, 15, 8, 0, tzinfo=timezone.utc)
-
-
-@pytest.fixture(scope="module")
-def spark():
-    os.environ.setdefault("PYSPARK_PYTHON", sys.executable)
-    session = (
-        SparkSession.builder.master("local[1]").appName("spark-knee-tests")
-        .config("spark.sql.shuffle.partitions", "2")
-        .config("spark.sql.session.timeZone", "UTC")
-        .config("spark.ui.enabled", "false")
-        .getOrCreate()
-    )
-    yield session
-    session.stop()
 
 
 def trip(minutes=10, zone=1, distance=2.0, fare=10.0, total=12.0, start=T0):
