@@ -12,6 +12,7 @@ spark:
   driver_memory: 4g
   shuffle_partitions: 32
   log_level: WARN               # Spark's own log level (INFO is very chatty)
+  event_log_dir: data/events    # Spark event logs (JSON lines): source of shuffle/spill metrics
 
 job:
   max_trip_hours: 6             # drop trips longer than this (meter left running)

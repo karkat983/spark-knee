@@ -30,9 +30,13 @@ def build_session(
         .config("spark.ui.showConsoleProgress", "false")
     )
     if event_log_dir:
+        # Spark 4 defaults to zstd-compressed, rolling event logs; plain single-file JSON lines
+        # are easier to parse and small enough at these sizes.
         builder = (
             builder.config("spark.eventLog.enabled", "true")
             .config("spark.eventLog.dir", event_log_dir)
+            .config("spark.eventLog.compress", "false")
+            .config("spark.eventLog.rolling.enabled", "false")
         )
     session = builder.getOrCreate()
     session.sparkContext.setLogLevel(spark_cfg.get("log_level", "WARN"))

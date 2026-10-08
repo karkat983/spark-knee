@@ -124,7 +124,9 @@ def main() -> None:
     cfg["job"]["join"] = args.join
 
     log.info("months=%s partitions=%d join=%s", ",".join(args.months), args.partitions, args.join)
-    spark = build_session(cfg["spark"], shuffle_partitions=args.partitions)
+    event_dir = resolve(cfg["spark"]["event_log_dir"])
+    event_dir.mkdir(parents=True, exist_ok=True)
+    spark = build_session(cfg["spark"], shuffle_partitions=args.partitions, event_log_dir=event_dir.as_uri())
     trips = load_trips(spark, trip_paths(cfg, args.months))
     zones = load_zones(spark, zones_path(cfg))
 
@@ -148,6 +150,7 @@ def main() -> None:
     rows = spark.read.parquet(str(out_dir / "hourly_zone_stats")).count()
     print(f"months={','.join(args.months)} partitions={args.partitions} join={args.join} "
           f"rows={rows} runtime_s={elapsed:.2f} out={out_dir}")
+    log.info("event log: %s", event_dir / spark.sparkContext.applicationId)
     spark.stop()
 
 
