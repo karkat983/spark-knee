@@ -21,3 +21,18 @@ def clean_trips(trips: DataFrame, max_trip_hours: float, max_distance_miles: flo
         & (F.col("fare") >= 0)
         & (F.col("total") > 0)
     )
+
+
+def hourly_zone_stats(trips: DataFrame) -> DataFrame:
+    """Trips, average distance/duration and revenue per (pickup zone, hour of day)."""
+    duration_min = (F.col("dropoff_ts").cast("long") - F.col("pickup_ts").cast("long")) / 60.0
+    return (
+        trips.withColumn("hour", F.hour("pickup_ts"))
+        .groupBy("pickup_zone", "hour")
+        .agg(
+            F.count("*").alias("trips"),
+            F.avg("distance_mi").alias("avg_distance_mi"),
+            F.avg(duration_min).alias("avg_duration_min"),
+            F.sum("total").alias("revenue"),
+        )
+    )
