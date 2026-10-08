@@ -32,7 +32,19 @@ def select_trip_columns(df: DataFrame) -> DataFrame:
 
 
 def load_trips(spark: SparkSession, paths: Sequence[str]) -> DataFrame:
-    return select_trip_columns(spark.read.parquet(*[str(p) for p in paths]))
+    """Read each file on its own, cast it to the job schema, then union them.
+
+    Reading all files in one `spark.read.parquet(...)` call makes Spark take one file's schema
+    for all of them, which fails or mis-reads when TLC changed a column's physical type
+    between releases (e.g. passenger_count int64 in some years, double in others).
+    """
+    frames = [select_trip_columns(spark.read.parquet(str(p))) for p in paths]
+    if not frames:
+        raise ValueError("no input files")
+    out = frames[0]
+    for frame in frames[1:]:
+        out = out.unionByName(frame)
+    return out
 
 
 def load_zones(spark: SparkSession, path: str) -> DataFrame:
