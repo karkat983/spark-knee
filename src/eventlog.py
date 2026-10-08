@@ -67,6 +67,28 @@ def summarise(events: Iterable[dict]) -> dict:
     return out
 
 
+def stage_table(events: list[dict]) -> list[dict]:
+    """One row per completed stage: planned task count, duration, and its task metrics."""
+    metrics = by_stage(events)
+    rows = []
+    for e in events:
+        if e.get("Event") != "SparkListenerStageCompleted":
+            continue
+        info = e["Stage Info"]
+        key = (info["Stage ID"], info.get("Stage Attempt ID", 0))
+        m = metrics.get(key, dict.fromkeys(METRICS, 0))
+        rows.append({
+            "stage": info["Stage ID"],
+            "attempt": info.get("Stage Attempt ID", 0),
+            "name": info.get("Stage Name", ""),
+            "planned_tasks": info.get("Number of Tasks", 0),
+            "duration_ms": info.get("Completion Time", 0) - info.get("Submission Time", 0),
+            **{k: m[k] for k in ("tasks", "shuffle_read_bytes", "shuffle_write_bytes",
+                                 "memory_spilled_bytes", "disk_spilled_bytes")},
+        })
+    return sorted(rows, key=lambda r: (r["stage"], r["attempt"]))
+
+
 def summarise_file(path: pathlib.Path | str) -> dict:
     return summarise(read_events(path))
 
@@ -75,9 +97,14 @@ def main() -> None:
     import sys
 
     for path in sys.argv[1:]:
+        events = list(read_events(path))
         print(path)
-        for k, v in summarise_file(path).items():
+        for k, v in summarise(events).items():
             print(f"  {k:<28} {v:>14,}")
+        print(f"  {'stage':>5} {'tasks':>6} {'ms':>7} {'shuffle_w':>11} {'shuffle_r':>11}  name")
+        for r in stage_table(events):
+            print(f"  {r['stage']:>5} {r['tasks']:>6} {r['duration_ms']:>7} "
+                  f"{r['shuffle_write_bytes']:>11,} {r['shuffle_read_bytes']:>11,}  {r['name'][:40]}")
 
 
 if __name__ == "__main__":

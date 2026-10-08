@@ -2,7 +2,7 @@ import pathlib
 
 import pytest
 
-from src.eventlog import METRICS, by_stage, read_events, summarise, summarise_file
+from src.eventlog import METRICS, by_stage, read_events, stage_table, summarise, summarise_file
 
 FIXTURE = pathlib.Path(__file__).parent / "fixtures" / "eventlog_small.jsonl"
 
@@ -43,3 +43,11 @@ def test_by_stage_splits_and_sums_back_to_total():
     total = summarise_file(FIXTURE)
     for key in ("tasks", "executor_run_time_ms", "shuffle_write_bytes", "disk_spilled_bytes"):
         assert sum(m[key] for m in stages.values()) == total[key]
+
+
+def test_stage_table_has_task_counts_and_durations():
+    rows = stage_table(list(read_events(FIXTURE)))
+    assert [(r["stage"], r["name"], r["planned_tasks"], r["tasks"], r["duration_ms"]) for r in rows] == [
+        (0, "scan", 2, 2, 250),
+        (1, "aggregate", 2, 1, 400),      # one task ended without metrics (failed)
+    ]

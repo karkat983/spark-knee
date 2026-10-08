@@ -4,4 +4,5 @@
 {"Event": "SparkListenerTaskEnd", "Stage ID": 0, "Stage Attempt ID": 0, "Task Metrics": {"Executor Run Time": 120, "JVM GC Time": 7, "Memory Bytes Spilled": 0, "Disk Bytes Spilled": 0, "Peak Execution Memory": 4096, "Shuffle Read Metrics": {"Remote Bytes Read": 0, "Local Bytes Read": 0}, "Shuffle Write Metrics": {"Shuffle Bytes Written": 1500}, "Input Metrics": {"Bytes Read": 6000, "Records Read": 60}}}
 {"Event": "SparkListenerTaskEnd", "Stage ID": 1, "Stage Attempt ID": 0, "Task Metrics": {"Executor Run Time": 300, "JVM GC Time": 20, "Memory Bytes Spilled": 8192, "Disk Bytes Spilled": 1024, "Peak Execution Memory": 9000, "Shuffle Read Metrics": {"Remote Bytes Read": 400, "Local Bytes Read": 2100}, "Shuffle Write Metrics": {"Shuffle Bytes Written": 0}, "Input Metrics": {"Bytes Read": 0, "Records Read": 0}}}
 {"Event": "SparkListenerTaskEnd", "Stage ID": 1}
-{"Event": "SparkListenerStageCompleted", "Stage Info": {"Stage ID": 1}}
+{"Event": "SparkListenerStageCompleted", "Stage Info": {"Stage ID": 0, "Stage Attempt ID": 0, "Stage Name": "scan", "Number of Tasks": 2, "Submission Time": 1000, "Completion Time": 1250}}
+{"Event": "SparkListenerStageCompleted", "Stage Info": {"Stage ID": 1, "Stage Attempt ID": 0, "Stage Name": "aggregate", "Number of Tasks": 2, "Submission Time": 1300, "Completion Time": 1700}}
