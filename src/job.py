@@ -19,6 +19,7 @@ from pyspark.sql import functions as F
 
 from src.config import load_config, resolve, trip_paths, zones_path
 from src.data import load_trips, load_zones
+from src.logs import get_logger
 from src.spark_session import build_session
 
 
@@ -112,6 +113,7 @@ def save_plans(plans: dict[str, DataFrame], out_dir: pathlib.Path, tag: str) -> 
 
 
 def main() -> None:
+    log = get_logger("spark_knee.job")
     cfg = load_config()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--months", nargs="+", default=cfg["data"]["months"])
@@ -121,6 +123,7 @@ def main() -> None:
     args = parser.parse_args()
     cfg["job"]["join"] = args.join
 
+    log.info("months=%s partitions=%d join=%s", ",".join(args.months), args.partitions, args.join)
     spark = build_session(cfg["spark"], shuffle_partitions=args.partitions)
     trips = load_trips(spark, trip_paths(cfg, args.months))
     zones = load_zones(spark, zones_path(cfg))
@@ -132,7 +135,7 @@ def main() -> None:
         top_plan = top_zones_per_borough(stats_plan, cfg["job"]["top_n"])
         plans = {"hourly_zone_stats": stats_plan, "top_zones": top_plan}
         saved = save_plans(plans, resolve("results/plans"), tag)
-        print("plans:", ", ".join(str(p.name) for p in saved))
+        log.info("saved plans: %s", ", ".join(p.name for p in saved))
     start = time.perf_counter()
     # Writing (not collect) forces every stage to run, as a production job would.
     stats = build_job(trips, zones, cfg["job"]).cache()

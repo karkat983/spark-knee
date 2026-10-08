@@ -34,4 +34,6 @@ def build_session(
             builder.config("spark.eventLog.enabled", "true")
             .config("spark.eventLog.dir", event_log_dir)
         )
-    return builder.getOrCreate()
+    session = builder.getOrCreate()
+    session.sparkContext.setLogLevel(spark_cfg.get("log_level", "WARN"))
+    return session
