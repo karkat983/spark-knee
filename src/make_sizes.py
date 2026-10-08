@@ -4,6 +4,8 @@
     python -m src.make_sizes --sizes 1 2 4
 """
 import argparse
+import os
+import shutil
 import time
 
 from pyspark.sql import DataFrame, SparkSession
@@ -41,6 +43,26 @@ def build_size(spark: SparkSession, cfg: dict, units: float) -> DataFrame:
     return out
 
 
+# Re-written Parquet is ~1.4x the size of the TLC originals (round-robin rows compress less);
+# 2x leaves headroom for Spark's temporary files during the write.
+SPACE_FACTOR = 2.0
+
+
+def bytes_needed(cfg: dict, units: float) -> int:
+    first = month_path(cfg, cfg["sizes"]["real_months"][0])
+    return int(os.path.getsize(first) * units * SPACE_FACTOR)
+
+
+def check_disk(cfg: dict, units: float) -> None:
+    """Refuse to start a build that would fill the disk."""
+    out_root = resolve(cfg["sizes"]["out_dir"])
+    out_root.mkdir(parents=True, exist_ok=True)
+    free = shutil.disk_usage(out_root).free
+    need = bytes_needed(cfg, units)
+    if need > free:
+        raise SystemExit(f"size {units:g}x needs ~{need / 1e9:.1f} GB but only {free / 1e9:.1f} GB is free")
+
+
 def file_count(cfg: dict, units: float) -> int:
     """Files per size grow with the size, so every file holds about the same amount of data
     (~1/files_per_unit of a month). Equal file sizes keep the read stage's task sizes constant."""
@@ -61,6 +83,7 @@ def main() -> None:
 
     spark = build_session(cfg["spark"], app_name="spark-knee-sizes")
     for units in args.sizes:
+        check_disk(cfg, units)
         start = time.perf_counter()
         out = size_dir(cfg, f"{units:g}")
         df = build_size(spark, cfg, units).repartition(file_count(cfg, units))

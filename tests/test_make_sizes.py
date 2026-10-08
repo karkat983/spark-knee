@@ -59,3 +59,17 @@ def test_fractional_size_samples_the_first_month(spark, cfg):
 def test_fractional_size_above_one_is_rejected(spark, cfg):
     with pytest.raises(ValueError):
         build_size(spark, cfg, 1.5)
+
+
+def test_disk_check_refuses_when_space_is_short(cfg, tmp_path, monkeypatch):
+    import shutil
+
+    from src import make_sizes
+
+    cfg["sizes"]["out_dir"] = str(tmp_path / "sized")      # absolute, so resolve() keeps it
+    need = make_sizes.bytes_needed(cfg, 16)
+    monkeypatch.setattr(shutil, "disk_usage", lambda p: shutil._ntuple_diskusage(10**12, 0, need - 1))
+    with pytest.raises(SystemExit, match="needs"):
+        make_sizes.check_disk(cfg, 16)
+    monkeypatch.setattr(shutil, "disk_usage", lambda p: shutil._ntuple_diskusage(10**12, 0, need + 1))
+    make_sizes.check_disk(cfg, 16)
