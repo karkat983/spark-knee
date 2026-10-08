@@ -33,4 +33,8 @@ Day 1 check: `pytest` passes (4 tests) with PySpark 4.2 on Python 3.12 and OpenJ
 Public data only (NYC Taxi & Limousine Commission trip records). Not affiliated with any employer. Built October 2026.
 
 ## Changelog
-- Day 1: project scaffold and changelog.
+- Day 1: project scaffold and changelog; job (clean, aggregate, join) and tests.
+- First real runs on January 2024 (2.96 M trips, ~3 s); data-quality profile keeps 96.7% of rows (docs/notes.md).
+- Parquet output, top-zones window stage, broadcast-vs-shuffle join switch, saved query plans.
+- Spark event logs and a parser for shuffle, spill, GC and per-stage metrics.
+- January-June 2024 downloaded (20.3 M trips); schema check and per-file casting for type drift.
