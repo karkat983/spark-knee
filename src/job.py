@@ -50,13 +50,26 @@ def hourly_zone_stats(trips: DataFrame) -> DataFrame:
     )
 
 
-def with_zone_names(stats: DataFrame, zones: DataFrame) -> DataFrame:
-    """Attach borough and zone name; unknown zone IDs are kept with null names."""
+JOIN_STRATEGIES = ("auto", "broadcast", "shuffle")
+
+
+def with_zone_names(stats: DataFrame, zones: DataFrame, strategy: str = "auto") -> DataFrame:
+    """Attach borough and zone name; unknown zone IDs are kept with null names.
+
+    strategy: "auto" lets Spark choose; "broadcast" ships the small zone table to every task;
+    "shuffle" forces a sort-merge join so both sides are shuffled (the costly path at scale).
+    """
+    if strategy not in JOIN_STRATEGIES:
+        raise ValueError(f"join strategy must be one of {JOIN_STRATEGIES}, got {strategy!r}")
     z = zones.select(
         F.col("LocationID").alias("pickup_zone"),
         F.col("Borough").alias("borough"),
         F.col("Zone").alias("zone_name"),
     )
+    if strategy == "broadcast":
+        z = F.broadcast(z)
+    elif strategy == "shuffle":
+        z = z.hint("merge")
     return stats.join(z, on="pickup_zone", how="left")
 
 
@@ -74,7 +87,7 @@ def top_zones_per_borough(named_stats: DataFrame, n: int) -> DataFrame:
 
 def build_job(trips: DataFrame, zones: DataFrame, job_cfg: dict) -> DataFrame:
     cleaned = clean_trips(trips, job_cfg["max_trip_hours"], job_cfg["max_distance_miles"])
-    return with_zone_names(hourly_zone_stats(cleaned), zones)
+    return with_zone_names(hourly_zone_stats(cleaned), zones, job_cfg.get("join", "auto"))
 
 
 def main() -> None:
@@ -82,7 +95,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--months", nargs="+", default=cfg["data"]["months"])
     parser.add_argument("--partitions", type=int, default=cfg["spark"]["shuffle_partitions"])
+    parser.add_argument("--join", choices=JOIN_STRATEGIES, default=cfg["job"].get("join", "auto"))
     args = parser.parse_args()
+    cfg["job"]["join"] = args.join
 
     spark = build_session(cfg["spark"], shuffle_partitions=args.partitions)
     trips = load_trips(spark, trip_paths(cfg, args.months))
@@ -99,7 +114,7 @@ def main() -> None:
     stats.unpersist()
 
     rows = spark.read.parquet(str(out_dir / "hourly_zone_stats")).count()
-    print(f"months={','.join(args.months)} partitions={args.partitions} "
+    print(f"months={','.join(args.months)} partitions={args.partitions} join={args.join} "
           f"rows={rows} runtime_s={elapsed:.2f} out={out_dir}")
     spark.stop()
 

@@ -16,3 +16,4 @@ job:
   max_trip_hours: 6             # drop trips longer than this (meter left running)
   max_distance_miles: 100
   top_n: 5                      # zones kept per borough in the window stage
+  join: auto                    # auto | broadcast | shuffle (zone-name join strategy)
