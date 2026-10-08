@@ -25,4 +25,4 @@ Distributed jobs are usually sized by assuming runtime grows linearly with data,
 Public data only (NYC Taxi & Limousine Commission trip records). Not affiliated with any employer. Built October 2026.
 
 ## Changelog
-- Day 1: project scaffold.
+- Day 1: project scaffold and changelog.
