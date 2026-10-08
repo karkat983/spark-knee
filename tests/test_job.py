@@ -10,7 +10,7 @@ from pyspark.sql.types import (
     TimestampType,
 )
 
-from src.job import build_job, clean_trips, hourly_zone_stats, with_zone_names
+from src.job import build_job, clean_trips, hourly_zone_stats, top_zones_per_borough, with_zone_names
 
 TRIP_SCHEMA = StructType([
     StructField("pickup_ts", TimestampType()),
@@ -116,3 +116,31 @@ def test_null_dropoff_is_dropped(spark):
     row = list(trip())
     row[1] = None
     assert clean_trips(trips_df(spark, [tuple(row)]), **JOB_CFG).count() == 0
+
+
+def test_top_zones_keeps_n_per_borough_ranked_by_revenue(spark):
+    zones = spark.createDataFrame(
+        [(1, "Manhattan", "A", "Y"), (2, "Manhattan", "B", "Y"), (3, "Manhattan", "C", "Y"),
+         (4, "Queens", "D", "B")],
+        ZONE_SCHEMA,
+    )
+    rows = (
+        [trip(zone=1, total=10.0)] * 3          # A: revenue 30
+        + [trip(zone=2, total=50.0)]            # B: revenue 50
+        + [trip(zone=3, total=5.0)] * 2         # C: revenue 10
+        + [trip(zone=4, total=7.0)]             # D: revenue 7, alone in Queens
+    )
+    stats = with_zone_names(hourly_zone_stats(trips_df(spark, rows)), zones)
+    top = {(r["borough"], r["rank"]): r for r in top_zones_per_borough(stats, n=2).collect()}
+    assert set(top) == {("Manhattan", 1), ("Manhattan", 2), ("Queens", 1)}
+    assert top[("Manhattan", 1)]["zone_name"] == "B"
+    assert top[("Manhattan", 2)]["zone_name"] == "A"
+    assert top[("Manhattan", 2)]["trips"] == 3
+
+
+def test_top_zones_sums_across_hours(spark):
+    rows = [trip(zone=1, total=10.0), trip(zone=1, total=10.0, start=T0 + timedelta(hours=3))]
+    stats = with_zone_names(hourly_zone_stats(trips_df(spark, rows)), zones_df(spark))
+    (row,) = top_zones_per_borough(stats, n=5).collect()
+    assert row["revenue"] == pytest.approx(20.0)
+    assert row["trips"] == 2
