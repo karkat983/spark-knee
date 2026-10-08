@@ -1,0 +1,39 @@
+"""Load TLC trips and the zone lookup with explicit column types.
+
+Only the columns the job needs are read. Types are cast explicitly because
+TLC files from different months do not always agree (e.g. int vs double).
+"""
+from collections.abc import Sequence
+
+from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql import functions as F
+from pyspark.sql.types import IntegerType, StringType, StructField, StructType
+
+ZONE_SCHEMA = StructType([
+    StructField("LocationID", IntegerType(), nullable=False),
+    StructField("Borough", StringType()),
+    StructField("Zone", StringType()),
+    StructField("service_zone", StringType()),
+])
+
+
+def select_trip_columns(df: DataFrame) -> DataFrame:
+    """Keep and cast the columns the job uses, with short snake_case names."""
+    return df.select(
+        F.col("tpep_pickup_datetime").cast("timestamp").alias("pickup_ts"),
+        F.col("tpep_dropoff_datetime").cast("timestamp").alias("dropoff_ts"),
+        F.col("PULocationID").cast("int").alias("pickup_zone"),
+        F.col("DOLocationID").cast("int").alias("dropoff_zone"),
+        F.col("passenger_count").cast("double").alias("passengers"),
+        F.col("trip_distance").cast("double").alias("distance_mi"),
+        F.col("fare_amount").cast("double").alias("fare"),
+        F.col("total_amount").cast("double").alias("total"),
+    )
+
+
+def load_trips(spark: SparkSession, paths: Sequence[str]) -> DataFrame:
+    return select_trip_columns(spark.read.parquet(*[str(p) for p in paths]))
+
+
+def load_zones(spark: SparkSession, path: str) -> DataFrame:
+    return spark.read.csv(str(path), header=True, schema=ZONE_SCHEMA)
