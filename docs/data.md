@@ -19,3 +19,25 @@ without a time zone (`timestamp[us]`), i.e. as New York wall-clock time; the job
 
 **1x = this one month (~2.96 M trips, ~50 MB compressed).** Larger sizes are built from more
 months and replication (see the sized-datasets phase of the plan).
+
+## Data dictionary (columns the job uses)
+
+Descriptions paraphrase the TLC
+[yellow-taxi data dictionary](https://www.nyc.gov/assets/tlc/downloads/pdf/data_dictionary_trip_records_yellow.pdf).
+The job renames columns to short snake_case names in `src/data.py`.
+
+| Source column | Job column | Type in job | Meaning |
+|---------------|------------|-------------|---------|
+| `tpep_pickup_datetime` | `pickup_ts` | timestamp | When the meter was engaged (NY wall clock) |
+| `tpep_dropoff_datetime` | `dropoff_ts` | timestamp | When the meter was disengaged |
+| `PULocationID` | `pickup_zone` | int | TLC taxi zone (1-265) where the meter was engaged |
+| `DOLocationID` | `dropoff_zone` | int | TLC taxi zone where the meter was disengaged |
+| `passenger_count` | `passengers` | double | Driver-entered passenger count (often missing) |
+| `trip_distance` | `distance_mi` | double | Trip distance in miles reported by the meter |
+| `fare_amount` | `fare` | double | Time-and-distance fare from the meter, USD |
+| `total_amount` | `total` | double | Total charged to the passenger, USD (excludes cash tips) |
+
+Zone lookup (`taxi_zone_lookup.csv`): `LocationID`, `Borough`, `Zone`, `service_zone`.
+IDs 264 and 265 are "Unknown"/"Outside of NYC" placeholders.
+
+The other 11 trip columns (vendor, rate code, payment type, fee breakdown) are not read.
