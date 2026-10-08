@@ -21,11 +21,19 @@ def month_path(cfg: dict, month: str) -> str:
     return str(resolve(cfg["data"]["raw_dir"]) / f"yellow_tripdata_{month}.parquet")
 
 
-def build_size(spark: SparkSession, cfg: dict, units: int) -> DataFrame:
-    """Union of `units` month-units: real months first, then shifted copies."""
+def build_size(spark: SparkSession, cfg: dict, units: float) -> DataFrame:
+    """Union of `units` month-units: real months first, then shifted copies.
+
+    Fractional sizes below 1 are seeded random samples of the first real month.
+    """
+    if units < 1:
+        first = normalise_raw(spark.read.parquet(month_path(cfg, cfg["sizes"]["real_months"][0])))
+        return first.sample(fraction=units, seed=cfg["sizes"].get("sample_seed", 42))
+    if units != int(units):
+        raise ValueError("sizes above 1x must be whole numbers of months")
     frames = [
         shift_timestamps(normalise_raw(spark.read.parquet(month_path(cfg, month))), copy)
-        for month, copy in unit_plan(units, cfg["sizes"]["real_months"])
+        for month, copy in unit_plan(int(units), cfg["sizes"]["real_months"])
     ]
     out = frames[0]
     for frame in frames[1:]:
@@ -48,16 +56,16 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("--sizes", type=int, nargs="+", default=cfg["sizes"]["multiples"])
+    parser.add_argument("--sizes", type=float, nargs="+", default=cfg["sizes"]["multiples"])
     args = parser.parse_args()
 
     spark = build_session(cfg["spark"], app_name="spark-knee-sizes")
     for units in args.sizes:
         start = time.perf_counter()
-        out = size_dir(cfg, str(units))
+        out = size_dir(cfg, f"{units:g}")
         df = build_size(spark, cfg, units).repartition(file_count(cfg, units))
         df.write.mode("overwrite").parquet(str(out))
-        log.info("size %dx -> %s in %.1fs", units, out, time.perf_counter() - start)
+        log.info("size %gx -> %s in %.1fs", units, out, time.perf_counter() - start)
     spark.stop()
 
 

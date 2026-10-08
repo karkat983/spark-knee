@@ -9,7 +9,8 @@ data:
 
 sizes:
   real_months: ["2024-01", "2024-02", "2024-03", "2024-04", "2024-05", "2024-06"]
-  multiples: [1, 2, 4, 8, 16]
+  multiples: [0.25, 0.5, 1, 2, 4, 8, 16]
+  sample_seed: 42               # for the 0.25x and 0.5x samples of January
   out_dir: data/sized
   files_per_unit: 4             # 1x -> 4 files, 16x -> 64 files (~12 MB each)
 

@@ -46,3 +46,16 @@ def test_row_counts_add_up_per_unit(spark, cfg, units, expected):
 def test_copies_do_not_duplicate_rows(spark, cfg):
     df = build_size(spark, cfg, 4)
     assert df.distinct().count() == df.count()
+
+
+def test_fractional_size_samples_the_first_month(spark, cfg):
+    cfg["sizes"]["sample_seed"] = 1
+    df = build_size(spark, cfg, 0.5)
+    assert dict(df.dtypes) == RAW_TYPES
+    assert 0 <= df.count() <= ROWS_PER_MONTH["2024-01"]
+    assert df.count() == build_size(spark, cfg, 0.5).count()      # seeded: same sample
+
+
+def test_fractional_size_above_one_is_rejected(spark, cfg):
+    with pytest.raises(ValueError):
+        build_size(spark, cfg, 1.5)
