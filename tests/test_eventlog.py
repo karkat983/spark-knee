@@ -2,7 +2,7 @@ import pathlib
 
 import pytest
 
-from src.eventlog import METRICS, summarise, summarise_file
+from src.eventlog import METRICS, by_stage, read_events, summarise, summarise_file
 
 FIXTURE = pathlib.Path(__file__).parent / "fixtures" / "eventlog_small.jsonl"
 
@@ -32,3 +32,14 @@ def test_empty_log_gives_zeros():
 @pytest.mark.parametrize("key", METRICS)
 def test_every_metric_present(key):
     assert key in summarise_file(FIXTURE)
+
+
+def test_by_stage_splits_and_sums_back_to_total():
+    stages = by_stage(read_events(FIXTURE))
+    assert set(stages) == {(0, 0), (1, 0)}
+    assert stages[(0, 0)]["tasks"] == 2
+    assert stages[(0, 0)]["shuffle_write_bytes"] == 2500
+    assert stages[(1, 0)]["shuffle_read_bytes"] == 2500
+    total = summarise_file(FIXTURE)
+    for key in ("tasks", "executor_run_time_ms", "shuffle_write_bytes", "disk_spilled_bytes"):
+        assert sum(m[key] for m in stages.values()) == total[key]

@@ -21,29 +21,48 @@ def read_events(path: pathlib.Path | str) -> Iterable[dict]:
                 yield json.loads(line)
 
 
+def _add_task(out: dict, m: dict) -> None:
+    """Accumulate one task's metrics into `out` (keys from METRICS)."""
+    read = m.get("Shuffle Read Metrics", {})
+    write = m.get("Shuffle Write Metrics", {})
+    inp = m.get("Input Metrics", {})
+    out["tasks"] += 1
+    out["executor_run_time_ms"] += m.get("Executor Run Time", 0)
+    out["gc_time_ms"] += m.get("JVM GC Time", 0)
+    out["shuffle_read_bytes"] += read.get("Remote Bytes Read", 0) + read.get("Local Bytes Read", 0)
+    out["shuffle_write_bytes"] += write.get("Shuffle Bytes Written", 0)
+    out["memory_spilled_bytes"] += m.get("Memory Bytes Spilled", 0)
+    out["disk_spilled_bytes"] += m.get("Disk Bytes Spilled", 0)
+    peak = m.get("Peak Execution Memory", 0)
+    out["peak_execution_memory_bytes"] = max(out["peak_execution_memory_bytes"], peak)
+    out["input_bytes"] += inp.get("Bytes Read", 0)
+    out["input_records"] += inp.get("Records Read", 0)
+
+
+def _task_ends(events: Iterable[dict]) -> Iterable[dict]:
+    for e in events:
+        if e.get("Event") == "SparkListenerTaskEnd" and "Task Metrics" in e:
+            yield e
+
+
+def by_stage(events: Iterable[dict]) -> dict[tuple[int, int], dict]:
+    """Metrics per (stage ID, attempt), so the expensive stage of a job can be found."""
+    stages: dict[tuple[int, int], dict] = {}
+    for e in _task_ends(events):
+        key = (e.get("Stage ID"), e.get("Stage Attempt ID", 0))
+        _add_task(stages.setdefault(key, dict.fromkeys(METRICS, 0)), e["Task Metrics"])
+    for metrics in stages.values():
+        metrics["stages"] = 1
+    return stages
+
+
 def summarise(events: Iterable[dict]) -> dict:
+    """Job totals: sums over every task (peak memory is the max over tasks)."""
     out = dict.fromkeys(METRICS, 0)
     stages = set()
-    for e in events:
-        if e.get("Event") != "SparkListenerTaskEnd" or "Task Metrics" not in e:
-            continue
-        m = e["Task Metrics"]
-        read = m.get("Shuffle Read Metrics", {})
-        write = m.get("Shuffle Write Metrics", {})
-        inp = m.get("Input Metrics", {})
+    for e in _task_ends(events):
         stages.add((e.get("Stage ID"), e.get("Stage Attempt ID", 0)))
-        out["tasks"] += 1
-        out["executor_run_time_ms"] += m.get("Executor Run Time", 0)
-        out["gc_time_ms"] += m.get("JVM GC Time", 0)
-        out["shuffle_read_bytes"] += read.get("Remote Bytes Read", 0) + read.get("Local Bytes Read", 0)
-        out["shuffle_write_bytes"] += write.get("Shuffle Bytes Written", 0)
-        out["memory_spilled_bytes"] += m.get("Memory Bytes Spilled", 0)
-        out["disk_spilled_bytes"] += m.get("Disk Bytes Spilled", 0)
-        out["peak_execution_memory_bytes"] = max(
-            out["peak_execution_memory_bytes"], m.get("Peak Execution Memory", 0)
-        )
-        out["input_bytes"] += inp.get("Bytes Read", 0)
-        out["input_records"] += inp.get("Records Read", 0)
+        _add_task(out, e["Task Metrics"])
     out["stages"] = len(stages)
     return out
 
