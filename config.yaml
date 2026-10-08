@@ -1,0 +1,17 @@
+# All tunable values live here so a reader can swap them without touching code.
+
+data:
+  base_url: https://d37ci6vzurychx.cloudfront.net/trip-data
+  zones_url: https://d37ci6vzurychx.cloudfront.net/misc/taxi_zone_lookup.csv
+  months: ["2024-01"]           # 1x = one month of yellow-taxi trips
+  raw_dir: data/raw
+  out_dir: data/out
+
+spark:
+  master: local[*]
+  driver_memory: 4g
+  shuffle_partitions: 32
+
+job:
+  max_trip_hours: 6             # drop trips longer than this (meter left running)
+  max_distance_miles: 100
