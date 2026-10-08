@@ -1,0 +1,7 @@
+{"Event": "SparkListenerLogStart", "Spark Version": "4.2.0"}
+{"Event": "SparkListenerTaskStart", "Stage ID": 0}
+{"Event": "SparkListenerTaskEnd", "Stage ID": 0, "Stage Attempt ID": 0, "Task Metrics": {"Executor Run Time": 100, "JVM GC Time": 5, "Memory Bytes Spilled": 0, "Disk Bytes Spilled": 0, "Peak Execution Memory": 2048, "Shuffle Read Metrics": {"Remote Bytes Read": 0, "Local Bytes Read": 0}, "Shuffle Write Metrics": {"Shuffle Bytes Written": 1000}, "Input Metrics": {"Bytes Read": 5000, "Records Read": 50}}}
+{"Event": "SparkListenerTaskEnd", "Stage ID": 0, "Stage Attempt ID": 0, "Task Metrics": {"Executor Run Time": 120, "JVM GC Time": 7, "Memory Bytes Spilled": 0, "Disk Bytes Spilled": 0, "Peak Execution Memory": 4096, "Shuffle Read Metrics": {"Remote Bytes Read": 0, "Local Bytes Read": 0}, "Shuffle Write Metrics": {"Shuffle Bytes Written": 1500}, "Input Metrics": {"Bytes Read": 6000, "Records Read": 60}}}
+{"Event": "SparkListenerTaskEnd", "Stage ID": 1, "Stage Attempt ID": 0, "Task Metrics": {"Executor Run Time": 300, "JVM GC Time": 20, "Memory Bytes Spilled": 8192, "Disk Bytes Spilled": 1024, "Peak Execution Memory": 9000, "Shuffle Read Metrics": {"Remote Bytes Read": 400, "Local Bytes Read": 2100}, "Shuffle Write Metrics": {"Shuffle Bytes Written": 0}, "Input Metrics": {"Bytes Read": 0, "Records Read": 0}}}
+{"Event": "SparkListenerTaskEnd", "Stage ID": 1}
+{"Event": "SparkListenerStageCompleted", "Stage Info": {"Stage ID": 1}}
