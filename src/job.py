@@ -11,7 +11,7 @@ Output is written as Parquet to data/out/hourly_zone_stats (overwritten each run
 import argparse
 import time
 
-from pyspark.sql import DataFrame
+from pyspark.sql import DataFrame, Window
 from pyspark.sql import functions as F
 
 from src.config import load_config, resolve, trip_paths, zones_path
@@ -60,6 +60,18 @@ def with_zone_names(stats: DataFrame, zones: DataFrame) -> DataFrame:
     return stats.join(z, on="pickup_zone", how="left")
 
 
+def top_zones_per_borough(named_stats: DataFrame, n: int) -> DataFrame:
+    """The n highest-revenue pickup zones in each borough (a window over a second shuffle)."""
+    per_zone = named_stats.groupBy("borough", "pickup_zone", "zone_name").agg(
+        F.sum("trips").alias("trips"), F.sum("revenue").alias("revenue")
+    )
+    by_revenue = Window.partitionBy("borough").orderBy(F.desc("revenue"), F.asc("pickup_zone"))
+    return (
+        per_zone.withColumn("rank", F.row_number().over(by_revenue))
+        .where(F.col("rank") <= n)
+    )
+
+
 def build_job(trips: DataFrame, zones: DataFrame, job_cfg: dict) -> DataFrame:
     cleaned = clean_trips(trips, job_cfg["max_trip_hours"], job_cfg["max_distance_miles"])
     return with_zone_names(hourly_zone_stats(cleaned), zones)
@@ -76,15 +88,19 @@ def main() -> None:
     trips = load_trips(spark, trip_paths(cfg, args.months))
     zones = load_zones(spark, zones_path(cfg))
 
-    out = resolve(cfg["data"]["out_dir"]) / "hourly_zone_stats"
+    out_dir = resolve(cfg["data"]["out_dir"])
     start = time.perf_counter()
     # Writing (not collect) forces every stage to run, as a production job would.
-    build_job(trips, zones, cfg["job"]).write.mode("overwrite").parquet(str(out))
+    stats = build_job(trips, zones, cfg["job"]).cache()
+    stats.write.mode("overwrite").parquet(str(out_dir / "hourly_zone_stats"))
+    top = top_zones_per_borough(stats, cfg["job"]["top_n"])
+    top.write.mode("overwrite").parquet(str(out_dir / "top_zones"))
     elapsed = time.perf_counter() - start
+    stats.unpersist()
 
-    rows = spark.read.parquet(str(out)).count()
+    rows = spark.read.parquet(str(out_dir / "hourly_zone_stats")).count()
     print(f"months={','.join(args.months)} partitions={args.partitions} "
-          f"rows={rows} runtime_s={elapsed:.2f} out={out}")
+          f"rows={rows} runtime_s={elapsed:.2f} out={out_dir}")
     spark.stop()
 
 
