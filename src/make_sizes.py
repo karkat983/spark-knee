@@ -33,6 +33,12 @@ def build_size(spark: SparkSession, cfg: dict, units: int) -> DataFrame:
     return out
 
 
+def file_count(cfg: dict, units: float) -> int:
+    """Files per size grow with the size, so every file holds about the same amount of data
+    (~1/files_per_unit of a month). Equal file sizes keep the read stage's task sizes constant."""
+    return max(1, round(cfg["sizes"]["files_per_unit"] * units))
+
+
 def size_dir(cfg: dict, label: str):
     return resolve(cfg["sizes"]["out_dir"]) / f"size={label}x"
 
@@ -49,7 +55,8 @@ def main() -> None:
     for units in args.sizes:
         start = time.perf_counter()
         out = size_dir(cfg, str(units))
-        build_size(spark, cfg, units).write.mode("overwrite").parquet(str(out))
+        df = build_size(spark, cfg, units).repartition(file_count(cfg, units))
+        df.write.mode("overwrite").parquet(str(out))
         log.info("size %dx -> %s in %.1fs", units, out, time.perf_counter() - start)
     spark.stop()
 

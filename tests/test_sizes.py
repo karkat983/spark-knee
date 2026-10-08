@@ -32,3 +32,10 @@ def test_shift_keeps_weekday_hour_and_duration(spark):
     assert pickup.weekday() == datetime(2024, 1, 15).weekday()
     assert pickup.hour == 8
     assert (dropoff - pickup).seconds == 20 * 60
+
+
+@pytest.mark.parametrize("units, files", [(0.25, 1), (0.5, 2), (1, 4), (2, 8), (16, 64)])
+def test_file_count_grows_with_size(units, files):
+    from src.make_sizes import file_count
+
+    assert file_count({"sizes": {"files_per_unit": 4}}, units) == files
