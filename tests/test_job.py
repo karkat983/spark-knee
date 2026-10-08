@@ -10,7 +10,13 @@ from pyspark.sql.types import (
     TimestampType,
 )
 
-from src.job import build_job, clean_trips, hourly_zone_stats, top_zones_per_borough, with_zone_names
+from src.job import (
+    build_job,
+    clean_trips,
+    hourly_zone_stats,
+    top_zones_per_borough,
+    with_zone_names,
+)
 
 TRIP_SCHEMA = StructType([
     StructField("pickup_ts", TimestampType()),
@@ -144,3 +150,31 @@ def test_top_zones_sums_across_hours(spark):
     (row,) = top_zones_per_borough(stats, n=5).collect()
     assert row["revenue"] == pytest.approx(20.0)
     assert row["trips"] == 2
+
+
+def physical_plan(df) -> str:
+    return df._jdf.queryExecution().executedPlan().toString()
+
+
+@pytest.mark.parametrize(
+    "strategy, operator", [("broadcast", "BroadcastHashJoin"), ("shuffle", "SortMergeJoin")]
+)
+def test_join_strategy_controls_the_physical_join(spark, strategy, operator):
+    stats = hourly_zone_stats(trips_df(spark, [trip(zone=1)]))
+    assert operator in physical_plan(with_zone_names(stats, zones_df(spark), strategy))
+
+
+def test_all_join_strategies_give_the_same_rows(spark):
+    rows = [trip(zone=1), trip(zone=2), trip(zone=2, start=T0 + timedelta(hours=2)), trip(zone=99)]
+    stats = hourly_zone_stats(trips_df(spark, rows))
+    results = [
+        sorted(tuple(r) for r in with_zone_names(stats, zones_df(spark), strategy).collect())
+        for strategy in ("auto", "broadcast", "shuffle")
+    ]
+    assert results[0] == results[1] == results[2]
+
+
+def test_unknown_join_strategy_rejected(spark):
+    stats = hourly_zone_stats(trips_df(spark, [trip()]))
+    with pytest.raises(ValueError):
+        with_zone_names(stats, zones_df(spark), "nested-loop")
