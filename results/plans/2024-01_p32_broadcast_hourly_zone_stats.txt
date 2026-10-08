@@ -1,0 +1,88 @@
+== Physical Plan ==
+AdaptiveSparkPlan (14)
++- Project (13)
+   +- BroadcastHashJoin LeftOuter BuildRight (12)
+      :- HashAggregate (7)
+      :  +- Exchange (6)
+      :     +- HashAggregate (5)
+      :        +- Project (4)
+      :           +- Project (3)
+      :              +- Filter (2)
+      :                 +- Scan parquet  (1)
+      +- BroadcastExchange (11)
+         +- Project (10)
+            +- Filter (9)
+               +- Scan csv  (8)
+
+
+(1) Scan parquet 
+Output [6]: [tpep_pickup_datetime#1, tpep_dropoff_datetime#2, trip_distance#4, PULocationID#7, fare_amount#10, total_amount#16]
+Batched: true
+Location: InMemoryFileIndex [file:/Users/karthikkt/Documents/SOP_Projects/spark-knee/data/raw/yellow_tripdata_2024-01.parquet]
+PushedFilters: [IsNotNull(tpep_pickup_datetime), IsNotNull(tpep_dropoff_datetime), IsNotNull(trip_distance), IsNotNull(fare_amount), IsNotNull(total_amount), IsNotNull(PULocationID), GreaterThan(trip_distance,0.0), LessThanOrEqual(trip_distance,100.0), GreaterThanOrEqual(fare_amount,0.0), GreaterThan(total_amount,0.0)]
+ReadSchema: struct<tpep_pickup_datetime:timestamp_ntz,tpep_dropoff_datetime:timestamp_ntz,trip_distance:double,PULocationID:int,fare_amount:double,total_amount:double>
+
+(2) Filter
+Input [6]: [tpep_pickup_datetime#1, tpep_dropoff_datetime#2, trip_distance#4, PULocationID#7, fare_amount#10, total_amount#16]
+Condition : (((((((((((((isnotnull(tpep_pickup_datetime#1) AND isnotnull(tpep_dropoff_datetime#2)) AND isnotnull(trip_distance#4)) AND isnotnull(fare_amount#10)) AND isnotnull(total_amount#16)) AND isnotnull(cast(tpep_pickup_datetime#1 as timestamp))) AND isnotnull(cast(tpep_dropoff_datetime#2 as timestamp))) AND isnotnull(PULocationID#7)) AND ((cast(cast(tpep_dropoff_datetime#2 as timestamp) as bigint) - cast(cast(tpep_pickup_datetime#1 as timestamp) as bigint)) > 0)) AND ((cast(cast(tpep_dropoff_datetime#2 as timestamp) as bigint) - cast(cast(tpep_pickup_datetime#1 as timestamp) as bigint)) <= 21600)) AND (trip_distance#4 > 0.0)) AND (trip_distance#4 <= 100.0)) AND (fare_amount#10 >= 0.0)) AND (total_amount#16 > 0.0))
+
+(3) Project
+Output [5]: [cast(tpep_pickup_datetime#1 as timestamp) AS pickup_ts#19, cast(tpep_dropoff_datetime#2 as timestamp) AS dropoff_ts#20, PULocationID#7 AS pickup_zone#21, trip_distance#4 AS distance_mi#24, total_amount#16 AS total#26]
+Input [6]: [tpep_pickup_datetime#1, tpep_dropoff_datetime#2, trip_distance#4, PULocationID#7, fare_amount#10, total_amount#16]
+
+(4) Project
+Output [6]: [pickup_ts#19, dropoff_ts#20, pickup_zone#21, distance_mi#24, total#26, hour(pickup_ts#19, Some(UTC)) AS hour#32]
+Input [5]: [pickup_ts#19, dropoff_ts#20, pickup_zone#21, distance_mi#24, total#26]
+
+(5) HashAggregate
+Input [6]: [pickup_ts#19, dropoff_ts#20, pickup_zone#21, distance_mi#24, total#26, hour#32]
+Keys [2]: [pickup_zone#21, hour#32]
+Functions [4]: [partial_count(1), partial_avg(distance_mi#24), partial_avg((cast((cast(dropoff_ts#20 as bigint) - cast(pickup_ts#19 as bigint)) as double) / 60.0)), partial_sum(total#26)]
+Aggregate Attributes [6]: [count#68L, sum#69, count#70L, sum#71, count#72L, sum#73]
+Results [8]: [pickup_zone#21, hour#32, count#74L, sum#75, count#76L, sum#77, count#78L, sum#79]
+
+(6) Exchange
+Input [8]: [pickup_zone#21, hour#32, count#74L, sum#75, count#76L, sum#77, count#78L, sum#79]
+Arguments: hashpartitioning(pickup_zone#21, hour#32, 32), ENSURE_REQUIREMENTS, [plan_id=35]
+
+(7) HashAggregate
+Input [8]: [pickup_zone#21, hour#32, count#74L, sum#75, count#76L, sum#77, count#78L, sum#79]
+Keys [2]: [pickup_zone#21, hour#32]
+Functions [4]: [count(1), avg(distance_mi#24), avg((cast((cast(dropoff_ts#20 as bigint) - cast(pickup_ts#19 as bigint)) as double) / 60.0)), sum(total#26)]
+Aggregate Attributes [4]: [count(1)#46L, avg(distance_mi#24)#47, avg((cast((cast(dropoff_ts#20 as bigint) - cast(pickup_ts#19 as bigint)) as double) / 60.0))#49, sum(total#26)#48]
+Results [6]: [pickup_zone#21, hour#32, count(1)#46L AS trips#33L, avg(distance_mi#24)#47 AS avg_distance_mi#34, avg((cast((cast(dropoff_ts#20 as bigint) - cast(pickup_ts#19 as bigint)) as double) / 60.0))#49 AS avg_duration_min#35, sum(total#26)#48 AS revenue#36]
+
+(8) Scan csv 
+Output [3]: [LocationID#28, Borough#29, Zone#30]
+Batched: false
+Location: InMemoryFileIndex [file:/Users/karthikkt/Documents/SOP_Projects/spark-knee/data/raw/taxi_zone_lookup.csv]
+PushedFilters: [IsNotNull(LocationID)]
+ReadSchema: struct<LocationID:int,Borough:string,Zone:string>
+
+(9) Filter
+Input [3]: [LocationID#28, Borough#29, Zone#30]
+Condition : isnotnull(LocationID#28)
+
+(10) Project
+Output [3]: [LocationID#28 AS pickup_zone#50, Borough#29 AS borough#51, Zone#30 AS zone_name#52]
+Input [3]: [LocationID#28, Borough#29, Zone#30]
+
+(11) BroadcastExchange
+Input [3]: [pickup_zone#50, borough#51, zone_name#52]
+Arguments: HashedRelationBroadcastMode(List(cast(input[0, int, true] as bigint)),false), [plan_id=38]
+
+(12) BroadcastHashJoin
+Left keys [1]: [pickup_zone#21]
+Right keys [1]: [pickup_zone#50]
+Join type: LeftOuter
+Join condition: None
+
+(13) Project
+Output [8]: [pickup_zone#21, hour#32, trips#33L, avg_distance_mi#34, avg_duration_min#35, revenue#36, borough#51, zone_name#52]
+Input [9]: [pickup_zone#21, hour#32, trips#33L, avg_distance_mi#34, avg_duration_min#35, revenue#36, pickup_zone#50, borough#51, zone_name#52]
+
+(14) AdaptiveSparkPlan
+Output [8]: [pickup_zone#21, hour#32, trips#33L, avg_distance_mi#34, avg_duration_min#35, revenue#36, borough#51, zone_name#52]
+Arguments: isFinalPlan=false
+
+

@@ -9,6 +9,9 @@ one, which is where the runtime curve is expected to bend as data grows.
 Output is written as Parquet to data/out/hourly_zone_stats (overwritten each run).
 """
 import argparse
+import contextlib
+import io
+import pathlib
 import time
 
 from pyspark.sql import DataFrame, Window
@@ -90,12 +93,31 @@ def build_job(trips: DataFrame, zones: DataFrame, job_cfg: dict) -> DataFrame:
     return with_zone_names(hourly_zone_stats(cleaned), zones, job_cfg.get("join", "auto"))
 
 
+def explain_text(df: DataFrame, mode: str = "formatted") -> str:
+    """The physical plan as text (df.explain prints it; this captures it instead)."""
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        df.explain(mode=mode)
+    return buf.getvalue()
+
+
+def save_plans(plans: dict[str, DataFrame], out_dir: pathlib.Path, tag: str) -> list[pathlib.Path]:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    paths = []
+    for name, df in plans.items():
+        path = out_dir / f"{tag}_{name}.txt"
+        path.write_text(explain_text(df))
+        paths.append(path)
+    return paths
+
+
 def main() -> None:
     cfg = load_config()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--months", nargs="+", default=cfg["data"]["months"])
     parser.add_argument("--partitions", type=int, default=cfg["spark"]["shuffle_partitions"])
     parser.add_argument("--join", choices=JOIN_STRATEGIES, default=cfg["job"].get("join", "auto"))
+    parser.add_argument("--explain", action="store_true", help="save physical plans to results/plans/")
     args = parser.parse_args()
     cfg["job"]["join"] = args.join
 
@@ -104,6 +126,13 @@ def main() -> None:
     zones = load_zones(spark, zones_path(cfg))
 
     out_dir = resolve(cfg["data"]["out_dir"])
+    if args.explain:
+        stats_plan = build_job(trips, zones, cfg["job"])
+        tag = f"{'_'.join(args.months)}_p{args.partitions}_{args.join}"
+        top_plan = top_zones_per_borough(stats_plan, cfg["job"]["top_n"])
+        plans = {"hourly_zone_stats": stats_plan, "top_zones": top_plan}
+        saved = save_plans(plans, resolve("results/plans"), tag)
+        print("plans:", ", ".join(str(p.name) for p in saved))
     start = time.perf_counter()
     # Writing (not collect) forces every stage to run, as a production job would.
     stats = build_job(trips, zones, cfg["job"]).cache()

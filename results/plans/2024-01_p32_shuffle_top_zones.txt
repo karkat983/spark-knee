@@ -1,0 +1,149 @@
+== Physical Plan ==
+AdaptiveSparkPlan (25)
++- Filter (24)
+   +- Window (23)
+      +- WindowGroupLimit (22)
+         +- Sort (21)
+            +- Exchange (20)
+               +- WindowGroupLimit (19)
+                  +- Sort (18)
+                     +- HashAggregate (17)
+                        +- HashAggregate (16)
+                           +- Project (15)
+                              +- SortMergeJoin LeftOuter (14)
+                                 :- Sort (8)
+                                 :  +- Exchange (7)
+                                 :     +- HashAggregate (6)
+                                 :        +- Exchange (5)
+                                 :           +- HashAggregate (4)
+                                 :              +- Project (3)
+                                 :                 +- Filter (2)
+                                 :                    +- Scan parquet  (1)
+                                 +- Sort (13)
+                                    +- Exchange (12)
+                                       +- Project (11)
+                                          +- Filter (10)
+                                             +- Scan csv  (9)
+
+
+(1) Scan parquet 
+Output [6]: [tpep_pickup_datetime#1, tpep_dropoff_datetime#2, trip_distance#4, PULocationID#7, fare_amount#10, total_amount#16]
+Batched: true
+Location: InMemoryFileIndex [file:/Users/karthikkt/Documents/SOP_Projects/spark-knee/data/raw/yellow_tripdata_2024-01.parquet]
+PushedFilters: [IsNotNull(tpep_pickup_datetime), IsNotNull(tpep_dropoff_datetime), IsNotNull(trip_distance), IsNotNull(fare_amount), IsNotNull(total_amount), IsNotNull(PULocationID), GreaterThan(trip_distance,0.0), LessThanOrEqual(trip_distance,100.0), GreaterThanOrEqual(fare_amount,0.0), GreaterThan(total_amount,0.0)]
+ReadSchema: struct<tpep_pickup_datetime:timestamp_ntz,tpep_dropoff_datetime:timestamp_ntz,trip_distance:double,PULocationID:int,fare_amount:double,total_amount:double>
+
+(2) Filter
+Input [6]: [tpep_pickup_datetime#1, tpep_dropoff_datetime#2, trip_distance#4, PULocationID#7, fare_amount#10, total_amount#16]
+Condition : (((((((((((((isnotnull(tpep_pickup_datetime#1) AND isnotnull(tpep_dropoff_datetime#2)) AND isnotnull(trip_distance#4)) AND isnotnull(fare_amount#10)) AND isnotnull(total_amount#16)) AND isnotnull(cast(tpep_pickup_datetime#1 as timestamp))) AND isnotnull(cast(tpep_dropoff_datetime#2 as timestamp))) AND isnotnull(PULocationID#7)) AND ((cast(cast(tpep_dropoff_datetime#2 as timestamp) as bigint) - cast(cast(tpep_pickup_datetime#1 as timestamp) as bigint)) > 0)) AND ((cast(cast(tpep_dropoff_datetime#2 as timestamp) as bigint) - cast(cast(tpep_pickup_datetime#1 as timestamp) as bigint)) <= 21600)) AND (trip_distance#4 > 0.0)) AND (trip_distance#4 <= 100.0)) AND (fare_amount#10 >= 0.0)) AND (total_amount#16 > 0.0))
+
+(3) Project
+Output [3]: [PULocationID#7 AS pickup_zone#21, total_amount#16 AS total#26, hour(cast(tpep_pickup_datetime#1 as timestamp), Some(UTC)) AS hour#32]
+Input [6]: [tpep_pickup_datetime#1, tpep_dropoff_datetime#2, trip_distance#4, PULocationID#7, fare_amount#10, total_amount#16]
+
+(4) HashAggregate
+Input [3]: [pickup_zone#21, total#26, hour#32]
+Keys [2]: [pickup_zone#21, hour#32]
+Functions [2]: [partial_count(1), partial_sum(total#26)]
+Aggregate Attributes [2]: [count#68L, sum#73]
+Results [4]: [pickup_zone#21, hour#32, count#74L, sum#79]
+
+(5) Exchange
+Input [4]: [pickup_zone#21, hour#32, count#74L, sum#79]
+Arguments: hashpartitioning(pickup_zone#21, hour#32, 32), ENSURE_REQUIREMENTS, [plan_id=98]
+
+(6) HashAggregate
+Input [4]: [pickup_zone#21, hour#32, count#74L, sum#79]
+Keys [2]: [pickup_zone#21, hour#32]
+Functions [2]: [count(1), sum(total#26)]
+Aggregate Attributes [2]: [count(1)#46L, sum(total#26)#48]
+Results [3]: [pickup_zone#21, count(1)#46L AS trips#33L, sum(total#26)#48 AS revenue#36]
+
+(7) Exchange
+Input [3]: [pickup_zone#21, trips#33L, revenue#36]
+Arguments: hashpartitioning(pickup_zone#21, 32), ENSURE_REQUIREMENTS, [plan_id=102]
+
+(8) Sort
+Input [3]: [pickup_zone#21, trips#33L, revenue#36]
+Arguments: [pickup_zone#21 ASC NULLS FIRST], false, 0
+
+(9) Scan csv 
+Output [3]: [LocationID#28, Borough#29, Zone#30]
+Batched: false
+Location: InMemoryFileIndex [file:/Users/karthikkt/Documents/SOP_Projects/spark-knee/data/raw/taxi_zone_lookup.csv]
+PushedFilters: [IsNotNull(LocationID)]
+ReadSchema: struct<LocationID:int,Borough:string,Zone:string>
+
+(10) Filter
+Input [3]: [LocationID#28, Borough#29, Zone#30]
+Condition : isnotnull(LocationID#28)
+
+(11) Project
+Output [3]: [LocationID#28 AS pickup_zone#50, Borough#29 AS borough#51, Zone#30 AS zone_name#52]
+Input [3]: [LocationID#28, Borough#29, Zone#30]
+
+(12) Exchange
+Input [3]: [pickup_zone#50, borough#51, zone_name#52]
+Arguments: hashpartitioning(pickup_zone#50, 32), ENSURE_REQUIREMENTS, [plan_id=103]
+
+(13) Sort
+Input [3]: [pickup_zone#50, borough#51, zone_name#52]
+Arguments: [pickup_zone#50 ASC NULLS FIRST], false, 0
+
+(14) SortMergeJoin
+Left keys [1]: [pickup_zone#21]
+Right keys [1]: [pickup_zone#50]
+Join type: LeftOuter
+Join condition: None
+
+(15) Project
+Output [5]: [pickup_zone#21, trips#33L, revenue#36, borough#51, zone_name#52]
+Input [6]: [pickup_zone#21, trips#33L, revenue#36, pickup_zone#50, borough#51, zone_name#52]
+
+(16) HashAggregate
+Input [5]: [pickup_zone#21, trips#33L, revenue#36, borough#51, zone_name#52]
+Keys [3]: [borough#51, pickup_zone#21, zone_name#52]
+Functions [2]: [partial_sum(trips#33L), partial_sum(revenue#36)]
+Aggregate Attributes [2]: [sum#80L, sum#81]
+Results [5]: [borough#51, pickup_zone#21, zone_name#52, sum#82L, sum#83]
+
+(17) HashAggregate
+Input [5]: [borough#51, pickup_zone#21, zone_name#52, sum#82L, sum#83]
+Keys [3]: [borough#51, pickup_zone#21, zone_name#52]
+Functions [2]: [sum(trips#33L), sum(revenue#36)]
+Aggregate Attributes [2]: [sum(trips#33L)#64L, sum(revenue#36)#65]
+Results [5]: [borough#51, pickup_zone#21, zone_name#52, sum(trips#33L)#64L AS trips#54L, sum(revenue#36)#65 AS revenue#55]
+
+(18) Sort
+Input [5]: [borough#51, pickup_zone#21, zone_name#52, trips#54L, revenue#55]
+Arguments: [borough#51 ASC NULLS FIRST, revenue#55 DESC NULLS LAST, pickup_zone#21 ASC NULLS FIRST], false, 0
+
+(19) WindowGroupLimit
+Input [5]: [borough#51, pickup_zone#21, zone_name#52, trips#54L, revenue#55]
+Arguments: [borough#51], [revenue#55 DESC NULLS LAST, pickup_zone#21 ASC NULLS FIRST], row_number(), 5, Partial
+
+(20) Exchange
+Input [5]: [borough#51, pickup_zone#21, zone_name#52, trips#54L, revenue#55]
+Arguments: hashpartitioning(borough#51, 32), ENSURE_REQUIREMENTS, [plan_id=114]
+
+(21) Sort
+Input [5]: [borough#51, pickup_zone#21, zone_name#52, trips#54L, revenue#55]
+Arguments: [borough#51 ASC NULLS FIRST, revenue#55 DESC NULLS LAST, pickup_zone#21 ASC NULLS FIRST], false, 0
+
+(22) WindowGroupLimit
+Input [5]: [borough#51, pickup_zone#21, zone_name#52, trips#54L, revenue#55]
+Arguments: [borough#51], [revenue#55 DESC NULLS LAST, pickup_zone#21 ASC NULLS FIRST], row_number(), 5, Final
+
+(23) Window
+Input [5]: [borough#51, pickup_zone#21, zone_name#52, trips#54L, revenue#55]
+Arguments: [row_number() windowspecdefinition(borough#51, revenue#55 DESC NULLS LAST, pickup_zone#21 ASC NULLS FIRST, specifiedwindowframe(RowFrame, unboundedpreceding$(), currentrow$())) AS rank#66], [borough#51], [revenue#55 DESC NULLS LAST, pickup_zone#21 ASC NULLS FIRST]
+
+(24) Filter
+Input [6]: [borough#51, pickup_zone#21, zone_name#52, trips#54L, revenue#55, rank#66]
+Condition : (rank#66 <= 5)
+
+(25) AdaptiveSparkPlan
+Output [6]: [borough#51, pickup_zone#21, zone_name#52, trips#54L, revenue#55, rank#66]
+Arguments: isFinalPlan=false
+
+

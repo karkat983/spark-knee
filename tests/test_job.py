@@ -13,7 +13,9 @@ from pyspark.sql.types import (
 from src.job import (
     build_job,
     clean_trips,
+    explain_text,
     hourly_zone_stats,
+    save_plans,
     top_zones_per_borough,
     with_zone_names,
 )
@@ -178,3 +180,11 @@ def test_unknown_join_strategy_rejected(spark):
     stats = hourly_zone_stats(trips_df(spark, [trip()]))
     with pytest.raises(ValueError):
         with_zone_names(stats, zones_df(spark), "nested-loop")
+
+
+def test_explain_text_is_captured_and_saved(spark, tmp_path):
+    stats = hourly_zone_stats(trips_df(spark, [trip()]))
+    assert "HashAggregate" in explain_text(stats)
+    (path,) = save_plans({"stats": stats}, tmp_path, "t")
+    assert path.name == "t_stats.txt"
+    assert "HashAggregate" in path.read_text()
