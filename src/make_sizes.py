@@ -6,6 +6,8 @@
     python -m src.make_sizes --files-per-unit 8 --out-dir /tmp/sized
 """
 import argparse
+import hashlib
+import json
 import os
 import shutil
 import time
@@ -108,6 +110,27 @@ def writer(df: DataFrame, cfg: dict):
     return w
 
 
+def build_fingerprint(cfg: dict, units: float) -> str:
+    """Hash of everything that determines a size's contents: recipe, input files, write options."""
+    months = cfg["sizes"]["real_months"][: max(1, int(units))]
+    inputs = {}
+    for m in months:
+        path = month_path(cfg, m)
+        inputs[m] = [os.path.getsize(path), int(os.path.getmtime(path))]
+    keys = ("files_per_unit", "compression", "row_group_mb", "sample_seed")
+    spec = {"recipe": describe_plan(cfg, units), "inputs": inputs,
+            "params": {k: cfg["sizes"].get(k) for k in keys}}
+    return hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest()
+
+
+MANIFEST = "_manifest.json"
+
+
+def is_current(out, fingerprint: str) -> bool:
+    manifest = out / MANIFEST
+    return manifest.exists() and json.loads(manifest.read_text()).get("fingerprint") == fingerprint
+
+
 def size_dir(cfg: dict, label: str):
     return resolve(cfg["sizes"]["out_dir"]) / f"size={label}x"
 
@@ -123,6 +146,7 @@ def main() -> None:
     parser.add_argument("--files-per-unit", type=int, help="override sizes.files_per_unit")
     parser.add_argument("--out-dir", help="override sizes.out_dir")
     parser.add_argument("--dry-run", action="store_true", help="print the plan, build nothing")
+    parser.add_argument("--force", action="store_true", help="rebuild even if a size is up to date")
     args = parser.parse_args()
     if args.files_per_unit:
         cfg["sizes"]["files_per_unit"] = args.files_per_unit
@@ -139,12 +163,18 @@ def main() -> None:
     spark = build_session(cfg["spark"], app_name="spark-knee-sizes", event_log_dir=event_dir.as_uri())
     seconds: dict[str, float] = {}
     for units in args.sizes:
+        out = size_dir(cfg, f"{units:g}")
+        fingerprint = build_fingerprint(cfg, units)
+        if not args.force and is_current(out, fingerprint):
+            log.info("size %gx is up to date, skipped (--force to rebuild)", units)
+            continue
         check_disk(cfg, units)
         spark.sparkContext.setJobGroup(f"{units:g}x", f"build size {units:g}x")
         start = time.perf_counter()
-        out = size_dir(cfg, f"{units:g}")
         df = build_size(spark, cfg, units).repartition(file_count(cfg, units))
         writer(df, cfg).parquet(str(out))
+        manifest = {"fingerprint": fingerprint, "recipe": describe_plan(cfg, units)}
+        (out / MANIFEST).write_text(json.dumps(manifest))
         seconds[f"{units:g}x"] = time.perf_counter() - start
         log.info("size %gx -> %s in %.1fs", units, out, seconds[f"{units:g}x"])
         if args.skew:
@@ -155,7 +185,8 @@ def main() -> None:
             log.info("skewed %gx -> %s", units, skew_out)
     app_id = spark.sparkContext.applicationId
     spark.stop()
-    write_build_profile(event_dir / app_id, seconds)
+    if seconds:
+        write_build_profile(event_dir / app_id, seconds)
 
 
 def write_build_profile(event_log, seconds: dict[str, float]) -> None:
@@ -166,15 +197,21 @@ def write_build_profile(event_log, seconds: dict[str, float]) -> None:
 
     groups = by_job_group(list(read_events(event_log)))
     out = resolve("results/size_build.csv")
+    fields = ["size", "seconds", "tasks", "peak_execution_mb", "spill_disk_mb", "gc_seconds"]
+    rows = {}
+    if out.exists():                                   # keep sizes not rebuilt this time
+        with open(out, newline="") as f:
+            rows = {r["size"]: r for r in csv.DictReader(f)}
+    for label, secs in seconds.items():
+        g = groups.get(label, {})
+        rows[label] = {"size": label, "seconds": round(secs, 1), "tasks": g.get("tasks", 0),
+                       "peak_execution_mb": round(g.get("peak_execution_memory_bytes", 0) / 2**20, 1),
+                       "spill_disk_mb": round(g.get("disk_spilled_bytes", 0) / 2**20, 1),
+                       "gc_seconds": round(g.get("gc_time_ms", 0) / 1000, 2)}
     with open(out, "w", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(["size", "seconds", "tasks", "peak_execution_mb", "spill_disk_mb", "gc_seconds"])
-        for label, secs in seconds.items():
-            g = groups.get(label, {})
-            w.writerow([label, round(secs, 1), g.get("tasks", 0),
-                        round(g.get("peak_execution_memory_bytes", 0) / 2**20, 1),
-                        round(g.get("disk_spilled_bytes", 0) / 2**20, 1),
-                        round(g.get("gc_time_ms", 0) / 1000, 2)])
+        w = csv.DictWriter(f, fieldnames=fields)
+        w.writeheader()
+        w.writerows(sorted(rows.values(), key=lambda r: float(r["size"].rstrip("x"))))
     log.info("build profile -> %s", out)
 
 

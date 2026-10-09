@@ -148,3 +148,24 @@ def test_row_group_size_controls_row_groups(spark, tmp_path):
         counts[mb] = pq.ParquetFile(part).metadata.num_row_groups
     assert counts[64] == 1
     assert counts[0.05] > 5
+
+
+def test_fingerprint_changes_with_inputs_and_params(cfg, tmp_path):
+    from src.make_sizes import build_fingerprint
+
+    cfg["sizes"].update({"files_per_unit": 4, "compression": "snappy"})
+    base = build_fingerprint(cfg, 2)
+    assert build_fingerprint(cfg, 2) == base
+    assert build_fingerprint(cfg, 1) != base
+    cfg["sizes"]["compression"] = "zstd"
+    assert build_fingerprint(cfg, 2) != base
+
+
+def test_is_current_reads_the_manifest(tmp_path):
+    import json
+
+    from src.make_sizes import MANIFEST, is_current
+
+    assert not is_current(tmp_path, "abc")
+    (tmp_path / MANIFEST).write_text(json.dumps({"fingerprint": "abc"}))
+    assert is_current(tmp_path, "abc") and not is_current(tmp_path, "def")
