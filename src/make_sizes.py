@@ -2,6 +2,8 @@
 
     python -m src.make_sizes                 # sizes from config.yaml
     python -m src.make_sizes --sizes 1 2 4
+    python -m src.make_sizes --dry-run       # print what each size is made of, write nothing
+    python -m src.make_sizes --files-per-unit 8 --out-dir /tmp/sized
 """
 import argparse
 import os
@@ -89,6 +91,14 @@ def file_count(cfg: dict, units: float) -> int:
     return max(1, round(cfg["sizes"]["files_per_unit"] * units))
 
 
+def describe_plan(cfg: dict, units: float) -> str:
+    """Human-readable recipe of one size, e.g. '2024-01, 2024-02, 2024-01+364d'."""
+    months = cfg["sizes"]["real_months"]
+    if units < 1:
+        return f"{units:.0%} sample of {months[0]}"
+    return ", ".join(m if c == 0 else f"{m}+{c * 364}d" for m, c in unit_plan(int(units), months))
+
+
 def size_dir(cfg: dict, label: str):
     return resolve(cfg["sizes"]["out_dir"]) / f"size={label}x"
 
@@ -101,7 +111,18 @@ def main() -> None:
     parser.add_argument("--sizes", type=float, nargs="+", default=cfg["sizes"]["multiples"])
     parser.add_argument("--skew", action="store_true",
                         help="also write a skewed copy of each size (hot zone from config)")
+    parser.add_argument("--files-per-unit", type=int, help="override sizes.files_per_unit")
+    parser.add_argument("--out-dir", help="override sizes.out_dir")
+    parser.add_argument("--dry-run", action="store_true", help="print the plan, build nothing")
     args = parser.parse_args()
+    if args.files_per_unit:
+        cfg["sizes"]["files_per_unit"] = args.files_per_unit
+    if args.out_dir:
+        cfg["sizes"]["out_dir"] = args.out_dir
+    if args.dry_run:
+        for units in args.sizes:
+            print(f"{units:g}x -> {describe_plan(cfg, units)} ({file_count(cfg, units)} files)")
+        return
 
     validate_sizes_config(cfg)
     spark = build_session(cfg["spark"], app_name="spark-knee-sizes")

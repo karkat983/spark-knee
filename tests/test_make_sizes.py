@@ -114,3 +114,11 @@ def test_committed_config_is_valid():
     except ValueError as e:
         if "raw files missing" not in str(e):     # CI has no downloads; everything else must pass
             raise
+
+
+def test_describe_plan():
+    from src.make_sizes import describe_plan
+
+    cfg = {"sizes": {"real_months": ["2024-01", "2024-02"]}}
+    assert describe_plan(cfg, 0.25) == "25% sample of 2024-01"
+    assert describe_plan(cfg, 3) == "2024-01, 2024-02, 2024-01+364d"
