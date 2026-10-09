@@ -39,3 +39,23 @@ January trips) until that one zone holds half of all rows.
 19 extra copies of the hot zone are needed (`copies_for_share`). The skewed sets are about twice
 the rows of their unskewed sizes, so they are compared with unskewed runs at equal row counts,
 not equal labels.
+
+## Building the sizes: time and memory (`results/size_build.csv`)
+
+`make_sizes` tags each size's Spark jobs with a job group and breaks the event log down per
+group. One run on the M3 (local[*], 4 GB driver):
+
+| Size | Seconds | Tasks | Peak task memory | Disk spill | GC seconds |
+|------|---------|-------|------------------|------------|------------|
+| 0.25x | 5.2 | 10 | 0 | 0 | 0.10 |
+| 0.5x | 3.5 | 11 | 0 | 0 | 0.14 |
+| 1x | 3.4 | 13 | 0 | 0 | 0.18 |
+| 2x | 5.5 | 26 | 0 | 0 | 0.84 |
+| 4x | 9.9 | 52 | 0 | 0 | 1.79 |
+| 8x | 19.8 | 104 | 0 | 0 | 3.85 |
+| 16x | 39.7 | 208 | 0 | 0 | 6.62 |
+
+Building is linear in size (~2.5 s per unit above 1x) with no spill: a round-robin
+`repartition` only moves rows and needs no hash tables (peak execution memory 0). The first
+size includes JVM warm-up. GC time grows a little faster than size (0.18 s at 1x, 6.6 s at 16x),
+an early hint that memory pressure, not CPU, is what the job sweep should watch.

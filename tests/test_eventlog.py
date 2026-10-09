@@ -2,7 +2,15 @@ import pathlib
 
 import pytest
 
-from src.eventlog import METRICS, by_stage, read_events, stage_table, summarise, summarise_file
+from src.eventlog import (
+    METRICS,
+    by_job_group,
+    by_stage,
+    read_events,
+    stage_table,
+    summarise,
+    summarise_file,
+)
 
 FIXTURE = pathlib.Path(__file__).parent / "fixtures" / "eventlog_small.jsonl"
 
@@ -51,3 +59,14 @@ def test_stage_table_has_task_counts_and_durations():
         (0, "scan", 2, 2, 250),
         (1, "aggregate", 2, 1, 400),      # one task ended without metrics (failed)
     ]
+
+
+def test_by_job_group_splits_one_application():
+    def submitted(stage, group):
+        return {"Event": "SparkListenerStageSubmitted", "Stage Info": {"Stage ID": stage},
+                "Properties": {"spark.jobGroup.id": group}}
+
+    events = list(read_events(FIXTURE)) + [submitted(0, "1x"), submitted(1, "2x")]
+    groups = by_job_group(events)
+    assert groups["1x"]["tasks"] == 2 and groups["1x"]["shuffle_write_bytes"] == 2500
+    assert groups["2x"]["tasks"] == 1 and groups["2x"]["disk_spilled_bytes"] == 1024

@@ -67,6 +67,27 @@ def summarise(events: Iterable[dict]) -> dict:
     return out
 
 
+def by_job_group(events: list[dict]) -> dict[str, dict]:
+    """Task metrics summed per Spark job group (sc.setJobGroup), so one application that does
+    several things (e.g. builds several dataset sizes) can be broken down per thing."""
+    stage_group: dict[tuple[int, int], str] = {}
+    for e in events:
+        if e.get("Event") == "SparkListenerStageSubmitted":
+            info = e["Stage Info"]
+            group = (e.get("Properties") or {}).get("spark.jobGroup.id")
+            if group:
+                stage_group[(info["Stage ID"], info.get("Stage Attempt ID", 0))] = group
+    groups: dict[str, dict] = {}
+    for key, metrics in by_stage(events).items():
+        group = stage_group.get(key)
+        if group is None:
+            continue
+        acc = groups.setdefault(group, dict.fromkeys(METRICS, 0))
+        for k, v in metrics.items():
+            acc[k] = max(acc[k], v) if k == "peak_execution_memory_bytes" else acc[k] + v
+    return groups
+
+
 def stage_table(events: list[dict]) -> list[dict]:
     """One row per completed stage: planned task count, duration, and its task metrics."""
     metrics = by_stage(events)

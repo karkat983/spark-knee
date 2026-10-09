@@ -134,21 +134,48 @@ def main() -> None:
         return
 
     validate_sizes_config(cfg)
-    spark = build_session(cfg["spark"], app_name="spark-knee-sizes")
+    event_dir = resolve(cfg["spark"]["event_log_dir"]) / "sizes"
+    event_dir.mkdir(parents=True, exist_ok=True)
+    spark = build_session(cfg["spark"], app_name="spark-knee-sizes", event_log_dir=event_dir.as_uri())
+    seconds: dict[str, float] = {}
     for units in args.sizes:
         check_disk(cfg, units)
+        spark.sparkContext.setJobGroup(f"{units:g}x", f"build size {units:g}x")
         start = time.perf_counter()
         out = size_dir(cfg, f"{units:g}")
         df = build_size(spark, cfg, units).repartition(file_count(cfg, units))
         writer(df, cfg).parquet(str(out))
-        log.info("size %gx -> %s in %.1fs", units, out, time.perf_counter() - start)
+        seconds[f"{units:g}x"] = time.perf_counter() - start
+        log.info("size %gx -> %s in %.1fs", units, out, seconds[f"{units:g}x"])
         if args.skew:
             skew = cfg["sizes"]["skew"]
             skewed = amplify_zone(spark.read.parquet(str(out)), skew["zone"], skew["target_share"])
             skew_out = resolve(skew["out_dir"]) / f"size={units:g}x"
             writer(skewed.repartition(file_count(cfg, units)), cfg).parquet(str(skew_out))
             log.info("skewed %gx -> %s", units, skew_out)
+    app_id = spark.sparkContext.applicationId
     spark.stop()
+    write_build_profile(event_dir / app_id, seconds)
+
+
+def write_build_profile(event_log, seconds: dict[str, float]) -> None:
+    """results/size_build.csv: time, peak task memory, spill and GC for building each size."""
+    import csv
+
+    from src.eventlog import by_job_group, read_events
+
+    groups = by_job_group(list(read_events(event_log)))
+    out = resolve("results/size_build.csv")
+    with open(out, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["size", "seconds", "tasks", "peak_execution_mb", "spill_disk_mb", "gc_seconds"])
+        for label, secs in seconds.items():
+            g = groups.get(label, {})
+            w.writerow([label, round(secs, 1), g.get("tasks", 0),
+                        round(g.get("peak_execution_memory_bytes", 0) / 2**20, 1),
+                        round(g.get("disk_spilled_bytes", 0) / 2**20, 1),
+                        round(g.get("gc_time_ms", 0) / 1000, 2)])
+    log.info("build profile -> %s", out)
 
 
 if __name__ == "__main__":
