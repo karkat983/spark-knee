@@ -10,3 +10,4 @@ data/events/
 spark-warehouse/
 metastore_db/
 derby.log
+data/sized_skew/

@@ -13,7 +13,7 @@ from pyspark.sql import DataFrame, SparkSession
 from src.config import load_config, resolve
 from src.data import normalise_raw
 from src.logs import get_logger
-from src.sizes import shift_timestamps, unit_plan
+from src.sizes import amplify_zone, shift_timestamps, unit_plan
 from src.spark_session import build_session
 
 log = get_logger("make_sizes")
@@ -79,6 +79,8 @@ def main() -> None:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("--sizes", type=float, nargs="+", default=cfg["sizes"]["multiples"])
+    parser.add_argument("--skew", action="store_true",
+                        help="also write a skewed copy of each size (hot zone from config)")
     args = parser.parse_args()
 
     spark = build_session(cfg["spark"], app_name="spark-knee-sizes")
@@ -89,6 +91,12 @@ def main() -> None:
         df = build_size(spark, cfg, units).repartition(file_count(cfg, units))
         df.write.mode("overwrite").parquet(str(out))
         log.info("size %gx -> %s in %.1fs", units, out, time.perf_counter() - start)
+        if args.skew:
+            skew = cfg["sizes"]["skew"]
+            skewed = amplify_zone(spark.read.parquet(str(out)), skew["zone"], skew["target_share"])
+            skew_out = resolve(skew["out_dir"]) / f"size={units:g}x"
+            skewed.repartition(file_count(cfg, units)).write.mode("overwrite").parquet(str(skew_out))
+            log.info("skewed %gx -> %s", units, skew_out)
     spark.stop()
 
 
