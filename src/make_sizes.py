@@ -19,6 +19,26 @@ from src.spark_session import build_session
 log = get_logger("make_sizes")
 
 
+def validate_sizes_config(cfg: dict) -> None:
+    """Fail fast on settings that would build wrong or misleading datasets."""
+    sizes = cfg["sizes"]
+    multiples = sizes["multiples"]
+    if multiples != sorted(multiples) or len(set(multiples)) != len(multiples):
+        raise ValueError("sizes.multiples must be strictly increasing")
+    if any(m <= 0 or (m >= 1 and m != int(m)) for m in multiples):
+        raise ValueError("sizes.multiples: fractions only below 1x, whole months above")
+    if sizes["files_per_unit"] < 1:
+        raise ValueError("sizes.files_per_unit must be >= 1")
+    if not sizes["real_months"]:
+        raise ValueError("sizes.real_months must list at least one month")
+    missing = [m for m in sizes["real_months"] if not os.path.exists(month_path(cfg, m))]
+    if missing:
+        raise ValueError(f"raw files missing for months {missing} (python scripts/download_tlc.py)")
+    skew = sizes.get("skew")
+    if skew and not 0 < skew["target_share"] < 1:
+        raise ValueError("sizes.skew.target_share must be between 0 and 1")
+
+
 def month_path(cfg: dict, month: str) -> str:
     return str(resolve(cfg["data"]["raw_dir"]) / f"yellow_tripdata_{month}.parquet")
 
@@ -83,6 +103,7 @@ def main() -> None:
                         help="also write a skewed copy of each size (hot zone from config)")
     args = parser.parse_args()
 
+    validate_sizes_config(cfg)
     spark = build_session(cfg["spark"], app_name="spark-knee-sizes")
     for units in args.sizes:
         check_disk(cfg, units)

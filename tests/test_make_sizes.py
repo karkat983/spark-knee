@@ -73,3 +73,44 @@ def test_disk_check_refuses_when_space_is_short(cfg, tmp_path, monkeypatch):
         make_sizes.check_disk(cfg, 16)
     monkeypatch.setattr(shutil, "disk_usage", lambda p: shutil._ntuple_diskusage(10**12, 0, need + 1))
     make_sizes.check_disk(cfg, 16)
+
+
+def good_sizes_cfg(cfg):
+    cfg["sizes"].update({"multiples": [0.5, 1, 2], "files_per_unit": 4,
+                         "skew": {"zone": 132, "target_share": 0.5}})
+    return cfg
+
+
+def test_valid_size_settings_pass(cfg):
+    from src.make_sizes import validate_sizes_config
+
+    validate_sizes_config(good_sizes_cfg(cfg))
+
+
+@pytest.mark.parametrize("patch", [
+    {"multiples": [2, 1]},
+    {"multiples": [1, 1.5]},
+    {"multiples": [0, 1]},
+    {"files_per_unit": 0},
+    {"real_months": ["2024-01", "2031-01"]},
+    {"skew": {"zone": 132, "target_share": 1.5}},
+])
+def test_bad_size_settings_fail(cfg, patch):
+    from src.make_sizes import validate_sizes_config
+
+    cfg = good_sizes_cfg(cfg)
+    cfg["sizes"].update(patch)
+    with pytest.raises(ValueError):
+        validate_sizes_config(cfg)
+
+
+def test_committed_config_is_valid():
+    from src.config import load_config
+    from src.make_sizes import validate_sizes_config
+
+    cfg = load_config()
+    try:
+        validate_sizes_config(cfg)
+    except ValueError as e:
+        if "raw files missing" not in str(e):     # CI has no downloads; everything else must pass
+            raise
