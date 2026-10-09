@@ -39,3 +39,25 @@ def test_file_count_grows_with_size(units, files):
     from src.make_sizes import file_count
 
     assert file_count({"sizes": {"files_per_unit": 4}}, units) == files
+
+
+@pytest.mark.parametrize("h, target, k", [(0.049, 0.5, 19), (0.25, 0.5, 2), (0.1, 0.15, 1)])
+def test_copies_for_share(h, target, k):
+    from src.sizes import copies_for_share
+
+    assert copies_for_share(h, target) == k
+    assert (1 + k) * h / (1 + k * h) >= target
+
+
+def test_amplified_zone_reaches_target_share(spark):
+    from src.sizes import amplify_zone
+
+    rows = [(datetime(2024, 1, 1, 8, i // 60, i % 60), datetime(2024, 1, 1, 9, i // 60, i % 60),
+             132 if i < 10 else 7) for i in range(100)]          # 100 distinct rows, 10% in zone 132
+    df = spark.createDataFrame(rows, "tpep_pickup_datetime timestamp, tpep_dropoff_datetime timestamp, "
+                                     "PULocationID int")
+    skewed = amplify_zone(df, zone=132, target_share=0.5)
+    hot = skewed.where("PULocationID = 132").count()
+    assert hot / skewed.count() >= 0.5
+    assert skewed.where("PULocationID <> 132").count() == 90           # other zones untouched
+    assert skewed.distinct().count() == skewed.count()                 # copies are shifted, not duplicated
