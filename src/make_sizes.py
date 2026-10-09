@@ -99,6 +99,15 @@ def describe_plan(cfg: dict, units: float) -> str:
     return ", ".join(m if c == 0 else f"{m}+{c * 364}d" for m, c in unit_plan(int(units), months))
 
 
+def writer(df: DataFrame, cfg: dict):
+    """DataFrameWriter with the configured Parquet compression (and, if set, row-group size)."""
+    w = df.write.mode("overwrite").option("compression", cfg["sizes"].get("compression", "snappy"))
+    block = cfg["sizes"].get("row_group_mb")
+    if block:
+        w = w.option("parquet.block.size", str(int(block * 1024 * 1024)))
+    return w
+
+
 def size_dir(cfg: dict, label: str):
     return resolve(cfg["sizes"]["out_dir"]) / f"size={label}x"
 
@@ -131,13 +140,13 @@ def main() -> None:
         start = time.perf_counter()
         out = size_dir(cfg, f"{units:g}")
         df = build_size(spark, cfg, units).repartition(file_count(cfg, units))
-        df.write.mode("overwrite").parquet(str(out))
+        writer(df, cfg).parquet(str(out))
         log.info("size %gx -> %s in %.1fs", units, out, time.perf_counter() - start)
         if args.skew:
             skew = cfg["sizes"]["skew"]
             skewed = amplify_zone(spark.read.parquet(str(out)), skew["zone"], skew["target_share"])
             skew_out = resolve(skew["out_dir"]) / f"size={units:g}x"
-            skewed.repartition(file_count(cfg, units)).write.mode("overwrite").parquet(str(skew_out))
+            writer(skewed.repartition(file_count(cfg, units)), cfg).parquet(str(skew_out))
             log.info("skewed %gx -> %s", units, skew_out)
     spark.stop()
 

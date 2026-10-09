@@ -122,3 +122,15 @@ def test_describe_plan():
     cfg = {"sizes": {"real_months": ["2024-01", "2024-02"]}}
     assert describe_plan(cfg, 0.25) == "25% sample of 2024-01"
     assert describe_plan(cfg, 3) == "2024-01, 2024-02, 2024-01+364d"
+
+
+@pytest.mark.parametrize("codec", ["snappy", "zstd"])
+def test_compression_codec_is_applied(spark, cfg, tmp_path, codec):
+    from src.make_sizes import writer
+
+    cfg["sizes"]["compression"] = codec
+    out = tmp_path / codec
+    writer(build_size(spark, cfg, 1), cfg).parquet(str(out))
+    (part,) = list(out.glob("*.parquet"))
+    meta = pq.ParquetFile(part).metadata
+    assert meta.row_group(0).column(0).compression.lower() == codec
