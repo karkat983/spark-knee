@@ -18,6 +18,7 @@ sizes:
   out_dir: data/sized
   files_per_unit: 4             # 1x -> 4 files, 16x -> 64 files (~12 MB each)
   compression: snappy           # Parquet codec: snappy (fast, Spark default) | zstd | gzip | none
+  row_group_mb: 32              # Parquet row-group size; smaller groups = more read tasks per file
 
 spark:
   master: local[*]

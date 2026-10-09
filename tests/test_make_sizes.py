@@ -134,3 +134,17 @@ def test_compression_codec_is_applied(spark, cfg, tmp_path, codec):
     (part,) = list(out.glob("*.parquet"))
     meta = pq.ParquetFile(part).metadata
     assert meta.row_group(0).column(0).compression.lower() == codec
+
+
+def test_row_group_size_controls_row_groups(spark, tmp_path):
+    from src.make_sizes import writer
+
+    df = spark.range(200_000).selectExpr("id", "cast(rand(1) * 1e9 as long) AS noise").coalesce(1)
+    counts = {}
+    for mb in (0.05, 64):
+        out = tmp_path / f"rg{mb}"
+        writer(df, {"sizes": {"compression": "none", "row_group_mb": mb}}).parquet(str(out))
+        (part,) = list(out.glob("*.parquet"))
+        counts[mb] = pq.ParquetFile(part).metadata.num_row_groups
+    assert counts[64] == 1
+    assert counts[0.05] > 5

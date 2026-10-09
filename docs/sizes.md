@@ -17,6 +17,9 @@ Built by `python -m src.make_sizes` into `data/sized/size=<N>x/` (gitignored); t
 **Rows, not multiples, are the size axis.** Spring months carry up to 26% more trips than
 January, so "16x" is really 18.1x January's rows. Every analysis plots runtime against rows.
 
+Files are written with snappy compression and 32 MB row groups (`sizes.compression`,
+`sizes.row_group_mb`); each ~17 MB file is therefore one row group, read by one task.
+
 The re-written files are ~1.4x larger per row than TLC's originals (69 MB vs 50 MB for January):
 `repartition` deals rows out round-robin, which breaks the time ordering that made the original
 columns compress well. Read cost per row is therefore slightly higher than for the raw files, the
